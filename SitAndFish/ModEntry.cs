@@ -35,7 +35,7 @@ namespace SitAndFish
 
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
 
-            SMonitor.Log("SitAndFish v1.3.0 yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
+            SMonitor.Log("SitAndFish v1.3.2 yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
         }
 
         private static void PressUseToolButton_Prefix()
