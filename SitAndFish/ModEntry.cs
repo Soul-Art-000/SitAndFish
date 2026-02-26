@@ -126,6 +126,13 @@ namespace SitAndFish
             if (farmer != null)
             {
                 farmer.yOffset = 0f; // offset'i sıfırla
+                
+                // Animasyon kilidinden dolayı karakterin buga girmemesi için 
+                // balık tutma bittiğinde oturmayı tam olarak sonlandırıyoruz.
+                if (farmer.isSitting.Value)
+                {
+                    farmer.StopSitting(true);
+                }
             }
         }
     }
