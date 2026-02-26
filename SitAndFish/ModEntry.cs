@@ -11,6 +11,13 @@ namespace SitAndFish
     public class ModEntry : Mod
     {
         private static IMonitor? SMonitor;
+        private static bool isFishingWhileSitting = false;
+        private static int sittingDirection = 2; // default aşağı
+
+        // Oturma sprite frame indexleri (SV farmer_base sprite sheet)
+        private const int SIT_DOWN = 107;   // aşağı bakarak oturma
+        private const int SIT_UP = 113;     // yukarı bakarak oturma
+        private const int SIT_SIDE = 117;   // yan (sol/sağ) oturma
 
         public override void Entry(IModHelper helper)
         {
@@ -18,22 +25,18 @@ namespace SitAndFish
 
             var harmony = new Harmony(this.ModManifest.UniqueID);
 
-            // Farmer.canMove veya Farmer.CanMove'u otururken true döndür (sadece olta için)
-            // Oyun, oturuyorken tool kullanımını Farmer.pressUseToolButton() içinde kontrol ediyor
-            // isSitting check'ini bypass etmek için pressUseToolButton'u patchleyeceğiz
-
-            // Farmer.isSitting kontrolünü FishingRod için bypass et
+            // isSitting kontrolünü FishingRod için bypass et
             harmony.Patch(
                 original: AccessTools.Method(typeof(Game1), nameof(Game1.pressUseToolButton)),
                 prefix: new HarmonyMethod(typeof(ModEntry), nameof(PressUseToolButton_Prefix)),
                 postfix: new HarmonyMethod(typeof(ModEntry), nameof(PressUseToolButton_Postfix))
             );
 
-            SMonitor.Log("SitAndFish yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
-        }
+            helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+            helper.Events.Display.RenderingWorld += OnRenderingWorld;
 
-        // Oturuyorken olta kullanmak isteniyorsa geçici olarak isSitting'i false yap
-        private static bool wasSittingBeforeTool = false;
+            SMonitor.Log("SitAndFish v1.1.0 yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
+        }
 
         private static void PressUseToolButton_Prefix()
         {
@@ -42,22 +45,17 @@ namespace SitAndFish
                 var farmer = Game1.player;
                 if (farmer == null) return;
 
-                // Sadece olta tutuyorsa ve oturuyorsa bypass et
                 if (farmer.isSitting.Value && farmer.CurrentTool is FishingRod)
                 {
-                    wasSittingBeforeTool = true;
+                    sittingDirection = farmer.FacingDirection;
+                    isFishingWhileSitting = true;
                     farmer.isSitting.Value = false;
-                    SMonitor?.Log("Oturma durumu geçici olarak devre dışı (olta atılıyor)", LogLevel.Debug);
-                }
-                else
-                {
-                    wasSittingBeforeTool = false;
+                    SMonitor?.Log($"Oturarak olta atılıyor (yön: {sittingDirection})", LogLevel.Debug);
                 }
             }
             catch (Exception ex)
             {
                 SMonitor?.Log($"Prefix hata: {ex.Message}", LogLevel.Warn);
-                wasSittingBeforeTool = false;
             }
         }
 
@@ -65,22 +63,73 @@ namespace SitAndFish
         {
             try
             {
-                if (wasSittingBeforeTool)
+                if (isFishingWhileSitting)
                 {
                     var farmer = Game1.player;
                     if (farmer != null)
                     {
                         farmer.isSitting.Value = true;
-                        SMonitor?.Log("Oturma durumu geri yüklendi", LogLevel.Debug);
                     }
-                    wasSittingBeforeTool = false;
                 }
             }
             catch (Exception ex)
             {
                 SMonitor?.Log($"Postfix hata: {ex.Message}", LogLevel.Warn);
-                wasSittingBeforeTool = false;
             }
+        }
+
+        // Her frame'de oturma sprite'ını zorla
+        private void OnRenderingWorld(object? sender, RenderingWorldEventArgs e)
+        {
+            if (!Context.IsWorldReady) return;
+            if (!isFishingWhileSitting) return;
+
+            var farmer = Game1.player;
+            if (farmer == null) return;
+
+            bool fishingNow = farmer.UsingTool && farmer.CurrentTool is FishingRod;
+            if (fishingNow)
+            {
+                ForceSittingSprite(farmer);
+            }
+        }
+
+        private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
+        {
+            if (!Context.IsWorldReady) return;
+            if (!isFishingWhileSitting) return;
+
+            var farmer = Game1.player;
+            if (farmer == null) return;
+
+            bool fishingNow = farmer.UsingTool && farmer.CurrentTool is FishingRod;
+
+            if (fishingNow)
+            {
+                // Oturma sprite'ını her tick'te zorla
+                ForceSittingSprite(farmer);
+            }
+            else
+            {
+                // Balık tutma bitti
+                isFishingWhileSitting = false;
+                SMonitor?.Log("Olta bırakıldı, normal oturma durumuna dönüldü.", LogLevel.Debug);
+            }
+        }
+
+        private static void ForceSittingSprite(Farmer farmer)
+        {
+            // Yöne göre doğru oturma frame'ini seç
+            int sittingFrame = sittingDirection switch
+            {
+                0 => SIT_UP,     // yukarı
+                1 => SIT_SIDE,   // sağ
+                2 => SIT_DOWN,   // aşağı
+                3 => SIT_SIDE,   // sol (aynalı)
+                _ => SIT_DOWN
+            };
+
+            farmer.FarmerSprite.setCurrentSingleFrame(sittingFrame, 32000, false, sittingDirection == 3);
         }
     }
 }
