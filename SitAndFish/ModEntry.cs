@@ -19,12 +19,7 @@ namespace SitAndFish
         private const int SIT_UP = 113;
         private const int SIT_SIDE = 117;
 
-        // Olta atma animasyonunun oynamasına izin vermek için sayaç
-        private static int castingGraceTicks = 0;
-        private const int CASTING_GRACE_PERIOD = 30; // ~0.5 saniye animasyon süresini ver
 
-        // Balık yakalama anı için
-        private static bool wasNibble = false;
 
         public override void Entry(IModHelper helper)
         {
@@ -40,7 +35,7 @@ namespace SitAndFish
 
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
 
-            SMonitor.Log("SitAndFish v1.2.0 yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
+            SMonitor.Log("SitAndFish v1.3.0 yüklendi! Sandalyede otururken olta atabilirsiniz.", LogLevel.Info);
         }
 
         private static void PressUseToolButton_Prefix()
@@ -54,7 +49,6 @@ namespace SitAndFish
                 {
                     sittingDirection = farmer.FacingDirection;
                     isFishingWhileSitting = true;
-                    castingGraceTicks = CASTING_GRACE_PERIOD; // cast animasyonuna izin ver
                     farmer.isSitting.Value = false;
                     SMonitor?.Log($"Oturarak olta atılıyor (yön: {sittingDirection})", LogLevel.Debug);
                 }
@@ -92,48 +86,17 @@ namespace SitAndFish
             var farmer = Game1.player;
             if (farmer == null) return;
 
-            // Olta hâlâ kullanılıyor mu?
-            if (!(farmer.CurrentTool is FishingRod rod))
-            {
-                ResetState();
-                return;
-            }
-
-            bool fishingNow = farmer.UsingTool;
+            bool fishingNow = farmer.UsingTool && farmer.CurrentTool is FishingRod;
 
             if (!fishingNow)
             {
-                // Balık tutma bitti, temizle
                 ResetState();
                 SMonitor?.Log("Balık tutma bitti, normal duruma dönüldü.", LogLevel.Debug);
                 return;
             }
 
-            // Olta atma animasyonu için grace period
-            if (castingGraceTicks > 0)
-            {
-                castingGraceTicks--;
-                return; // cast animasyonunun doğal oynamasına izin ver
-            }
-
-            // Balık yakalama/minigame anında sprite'ı zorlamayı durdur
-            if (rod.isReeling || rod.pullingOutOfWater || rod.isFishing && rod.isNibbling)
-            {
-                // Minigame veya çekme anında doğal animasyonu kullan
-                if (!wasNibble)
-                {
-                    SMonitor?.Log("Balık geldi! Doğal animasyon kullanılıyor.", LogLevel.Debug);
-                    wasNibble = true;
-                }
-                return;
-            }
-
-            // Olta suda beklerken → oturma sprite'ını zorla
-            if (rod.isFishing && !rod.isNibbling && !rod.isReeling)
-            {
-                wasNibble = false;
-                ForceSittingSprite(farmer);
-            }
+            // Tüm süreç boyunca oturma sprite'ını zorla
+            ForceSittingSprite(farmer);
         }
 
         private static void ForceSittingSprite(Farmer farmer)
@@ -158,8 +121,6 @@ namespace SitAndFish
         private static void ResetState()
         {
             isFishingWhileSitting = false;
-            castingGraceTicks = 0;
-            wasNibble = false;
 
             var farmer = Game1.player;
             if (farmer != null)
